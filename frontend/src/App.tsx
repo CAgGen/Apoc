@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, Stakeholder } from "./api";
 import { Dashboard } from "./Dashboard";
 import { ProjectView } from "./ProjectView";
+import { GenerationDock } from "./GenerationDock";
+import { generations } from "./genStore";
 
 const ROLE_LABEL: Record<string, string> = {
   architect: "Architect",
@@ -37,6 +39,11 @@ export function App() {
       const saved = s.find((x) => x.id === savedId);
       setMe(saved ?? s[0] ?? null);
     });
+  }, []);
+
+  // After a refresh, reconnect to any generation still running on the server.
+  useEffect(() => {
+    void generations.init();
   }, []);
 
   // Sync hash → state (handles browser back/forward)
@@ -98,6 +105,8 @@ export function App() {
           <ProjectView projectId={projectId} me={me} onBack={closeProject} />
         )}
       </main>
+
+      <GenerationDock onOpen={openProject} />
     </div>
   );
 }

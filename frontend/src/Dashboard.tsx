@@ -1,5 +1,9 @@
 import { type ChangeEvent, type MouseEvent, useEffect, useRef, useState } from "react";
-import { api, API_BASE, IntakeMessage, IntakeTurn, Project, Stakeholder } from "./api";
+import { api, IntakeMessage, IntakeTurn, Project, Stakeholder } from "./api";
+import { generations, useGenerations } from "./genStore";
+
+// Re-exported for back-compat (tests import it from here); owned by genStore.
+export { GENERATION_STALL_MS } from "./genStore";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-white/10 text-white/60",
@@ -20,8 +24,6 @@ const BRIEF_FIELDS: { key: string; label: string; ph: string }[] = [
   { key: "constraints", label: "Other constraints", ph: "Banned tech, mandated standards, etc." },
 ];
 
-export const GENERATION_STALL_MS = 10 * 60 * 1000;
-
 export function formatPdfExtractionMeta(meta: Record<string, unknown> | undefined): string {
   if (!meta || meta.source_type !== "uploaded_pdf") return "";
   const pageCount = Number(meta.page_count ?? 0);
@@ -40,6 +42,14 @@ export function Dashboard({ me, onOpen }: { me: Stakeholder; onOpen: (id: string
   useEffect(() => {
     load();
   }, []);
+
+  // Refresh the list whenever a tracked generation settles, so a project's
+  // status chip updates even if it finished while the user was elsewhere.
+  const gens = useGenerations();
+  const settledCount = gens.filter((g) => g.status !== "running").length;
+  useEffect(() => {
+    if (settledCount > 0) load();
+  }, [settledCount]);
 
   async function handleDelete(e: MouseEvent, id: string, title: string) {
     e.stopPropagation();
@@ -348,43 +358,41 @@ function ConfirmPanel({
   setDraft: (d: ConfirmDraft | null) => void;
   onCreated: (id: string) => void;
 }) {
-  const [log, setLog] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [cancelled, setCancelled] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
-  const stallRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settledRef = useRef(false);
-  const projectIdRef = useRef<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [startedId, setStartedId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
-  // Close the stream + clear the watchdog on unmount so a backgrounded
-  // generation never leaks a connection or fires a stale timeout.
-  useEffect(
-    () => () => {
-      esRef.current?.close();
-      if (stallRef.current) clearTimeout(stallRef.current);
-    },
-    [],
-  );
+  // The live generation state lives in the module-level store (genStore), so it
+  // survives this panel being unmounted when the user opens another project.
+  const gens = useGenerations();
+  const gen = startedId ? gens.find((g) => g.projectId === startedId) : undefined;
+  const busy = starting || gen?.status === "running";
+  const cancelled = gen?.status === "cancelled";
+  const error = startError ?? (gen?.status === "failed" ? gen.error ?? "Generation failed." : null);
+  const log = gen?.log ?? [];
 
-  async function handleCancel() {
-    const id = projectIdRef.current;
-    if (!id) return;
-    try {
-      await api.cancelGenerate(id);
-    } catch {
-      // best-effort; SSE will surface the result
+  // Once the started generation completes, fold this form away and open the POC
+  // — but only while the user is still here; if they navigated off, this panel
+  // is unmounted and the floating dock carries the result instead.
+  const onCreatedRef = useRef(onCreated);
+  onCreatedRef.current = onCreated;
+  const navigatedRef = useRef(false);
+  useEffect(() => {
+    if (gen?.status === "done" && !navigatedRef.current) {
+      navigatedRef.current = true;
+      onCreatedRef.current(gen.projectId);
     }
+  }, [gen?.status, gen?.projectId]);
+
+  function handleCancel() {
+    if (startedId) generations.cancel(startedId);
   }
 
   const generate = async () => {
     if (!draft.title.trim()) return;
-    setBusy(true);
-    setError(null);
-    setCancelled(false);
-    setLog(["Creating project…"]);
-    settledRef.current = false;
-    projectIdRef.current = null;
+    setStartError(null);
+    setStarting(true);
+    navigatedRef.current = false;
 
     let id: string;
     try {
@@ -398,61 +406,15 @@ function ConfirmPanel({
         source_provenance: draft.sourceProvenance,
       }));
       await api.generate(id);
-      projectIdRef.current = id;
     } catch (e: any) {
-      setError(e?.message || "Could not start generation — is the backend running?");
-      setBusy(false);
+      setStartError(e?.message || "Could not start generation — is the backend running?");
+      setStarting(false);
       return;
     }
 
-    const es = new EventSource(`${API_BASE}/api/projects/${id}/stream`);
-    esRef.current = es;
-
-    const settle = () => {
-      settledRef.current = true;
-      if (stallRef.current) clearTimeout(stallRef.current);
-      es.close();
-    };
-    const armStall = () => {
-      if (stallRef.current) clearTimeout(stallRef.current);
-      stallRef.current = setTimeout(() => {
-        settle();
-        setBusy(false);
-        setError("No progress from the server for a while — it may be busy or unreachable. Retry below.");
-      }, GENERATION_STALL_MS);
-    };
-    armStall();
-
-    es.onmessage = (e) => {
-      armStall(); // progress arrived — reset the watchdog
-      let ev: any;
-      try {
-        ev = JSON.parse(e.data);
-      } catch {
-        return;
-      }
-      setLog((l) => [...l, `${ev.phase} — ${ev.message ?? ""}`]);
-      if (ev.phase === "done") {
-        settle();
-        onCreated(id);
-      }
-      if (ev.phase === "failed") {
-        settle();
-        setBusy(false);
-        setError(ev.message || "Generation failed.");
-      }
-      if (ev.phase === "cancelled") {
-        settle();
-        setBusy(false);
-        setCancelled(true);
-      }
-    };
-    es.onerror = () => {
-      if (settledRef.current) return; // normal close after done/failed/cancelled
-      settle();
-      setBusy(false);
-      setError("Lost connection to the generation stream. Retry below.");
-    };
+    generations.start(id, draft.title);
+    setStartedId(id);
+    setStarting(false);
   };
 
   const set = (patch: Partial<ConfirmDraft>) => setDraft({ ...draft, ...patch });
