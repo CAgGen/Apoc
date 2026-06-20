@@ -1,4 +1,15 @@
+# APoc — full stack, one command:   podman compose up --build -d
+#
+#   frontend     → http://localhost:5174   (nginx-served React build)
+#   backend      → http://localhost:8800   (FastAPI + LangGraph)
+#   searxng      → http://localhost:8080   (research grounding)
+#   langfuse-web → http://localhost:3000   (tracing + eval UI)
+#
+# All secrets/keys come from .env (DEEPSEEK_API_KEY / ANTHROPIC_API_KEY +
+# the LANGFUSE_* block). Nothing else to configure to boot the stack.
+
 services:
+  # ─────────────────────────────── App ───────────────────────────────
   searxng:
     image: searxng/searxng:latest
     ports:
@@ -10,39 +21,176 @@ services:
       - ./searxng:/etc/searxng:rw
     restart: unless-stopped
 
-  # Langfuse — tracing + eval hosting (http://localhost:${LANGFUSE_WEB_PORT:-3000})
-  # Keys are pre-provisioned by LANGFUSE_INIT_* vars in .env — no manual signup needed.
-  # The APoc backend reads them automatically via LANGFUSE_INIT_PROJECT_PUBLIC/SECRET_KEY.
-  langfuse:
-    image: langfuse/langfuse:3
-    ports:
-      - "${LANGFUSE_WEB_PORT:-3000}:3000"
+  backend:
+    build: ./backend
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:-langfuse}@langfuse-db:5432/langfuse
-      - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
-      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-change-me}
-      - SALT=${LANGFUSE_SALT:-change-me}
-      - LANGFUSE_TELEMETRY_ENABLED=false
+      - APOC_SEARXNG_URL=http://searxng:8080
+      - APOC_SKIP_SEARXNG_START=1
+      - APOC_FRONTEND_ORIGIN=http://localhost:5174
+      - APOC_DB_PATH=/data/apoc.db
+      - APOC_RUNS_DIR=/data/runs
+      # App runs without tracing by default; the eval script turns it on per-run.
+      - LANGFUSE_ENABLED=false
+      # Point the Langfuse SDK at the in-network instance and align the keys with
+      # the project that LANGFUSE_INIT_* provisions (the standalone LANGFUSE_*
+      # keys in .env are stale and would 401).
+      # The v4 Python SDK reads LANGFUSE_BASE_URL (the .env value points at
+      # localhost, which is wrong from inside the container) — override both.
+      - LANGFUSE_HOST=http://langfuse-web:3000
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+    ports:
+      - "8800:8800"
+    volumes:
+      - apoc_data:/data
     depends_on:
-      langfuse-db:
-        condition: service_healthy
+      - searxng
     restart: unless-stopped
 
-  langfuse-db:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: http://localhost:8800
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ────────────────────────── Langfuse v3 stack ──────────────────────────
+  langfuse-web:
+    image: langfuse/langfuse:3
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "${LANGFUSE_WEB_PORT:-3000}:3000"
+    environment: &langfuse-env
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_POSTGRES_PASSWORD}@langfuse-postgres:5432/postgres
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_CONNECTION_STRING: redis://default:${LANGFUSE_REDIS_AUTH}@redis:6379
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      # First-boot auto-provisioning of org / project / user / API keys
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment: *langfuse-env
+    restart: unless-stopped
+
+  langfuse-postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=langfuse
-      - POSTGRES_PASSWORD=${LANGFUSE_POSTGRES_PASSWORD:-langfuse}
-      - POSTGRES_DB=langfuse
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${LANGFUSE_POSTGRES_PASSWORD}
+      - POSTGRES_DB=postgres
     volumes:
-      - langfuse_db:/var/lib/postgresql/data
+      - langfuse_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=clickhouse
+      - CLICKHOUSE_PASSWORD=${LANGFUSE_CLICKHOUSE_PASSWORD}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_AUTH}"]
+    environment:
+      # redis-cli auto-reads REDISCLI_AUTH, so the healthcheck needs no password flag
+      - REDISCLI_AUTH=${LANGFUSE_REDIS_AUTH}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    entrypoint: sh
+    # Pre-create the "langfuse" bucket (path-style = a directory) then serve.
+    command: -c 'mkdir -p /data/langfuse && minio server /data --console-address ":9001"'
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=${LANGFUSE_MINIO_ROOT_PASSWORD}
+    volumes:
+      - langfuse_minio:/data
     restart: unless-stopped
 
 volumes:
-  langfuse_db:
+  apoc_data:
+  langfuse_pg:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio:

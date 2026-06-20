@@ -9,3 +9,6 @@ python-multipart>=0.0.9
 langgraph>=0.2
 pypdf>=4.0
 langfuse>=3.0.0
+# langfuse's LangChain integration needs the full langchain package, not just
+# langchain-core — without it the tracing callback silently no-ops.
+langchain>=1,<2
