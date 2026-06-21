@@ -251,9 +251,9 @@ NON-NEGOTIABLE rules (from the skill):
   reveal details.
 - TITLE SLIDE ATTRIBUTION: if the user prompt includes `Title slide signature: ...`, \
   render that exact text as a small, editable attribution line on the title slide. \
-  With both names it should read "为 {client company} 制作 · 由 {team/org} 出品"; \
-  with only the client, show only "为 {client company} 制作"; with only the team/org, \
-  show only "由 {team/org} 出品"; if no signature is provided, omit the attribution \
+  With both names it should read "Prepared for {client company} · Produced by {team/org}"; \
+  with only the client, show only "Prepared for {client company}"; with only the team/org, \
+  show only "Produced by {team/org}"; if no signature is provided, omit the attribution \
   line entirely.
 - NO <script> tags, NO external assets/fonts/CDNs (system or web-safe font stacks \
   only), NO images.

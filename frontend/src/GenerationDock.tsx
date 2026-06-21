@@ -1,15 +1,15 @@
 import { generations, GenState, useGenerations } from "./genStore";
 
 const PHASE_LABEL: Record<string, string> = {
-  queued: "排队中…",
-  reconnecting: "重新连接…",
-  intake: "解析需求…",
-  research: "联网调研…",
-  candidates: "生成候选方案…",
-  judge: "比较与融合…",
-  document: "撰写文档…",
-  reviews: "评审中…",
-  deck: "生成幻灯片…",
+  queued: "Queued...",
+  reconnecting: "Reconnecting...",
+  intake: "Parsing requirements...",
+  research: "Researching online...",
+  candidates: "Generating candidate designs...",
+  judge: "Comparing and merging...",
+  document: "Writing document...",
+  reviews: "Reviewing...",
+  deck: "Generating slide deck...",
 };
 
 /**
@@ -50,7 +50,7 @@ function Card({ g, onOpen }: { g: GenState; onOpen: (id: string) => void }) {
         {!running && (
           <button
             onClick={() => generations.dismiss(g.projectId)}
-            title="关闭"
+            title="Close"
             className="ml-auto rounded px-1 text-white/40 hover:text-white"
           >
             ✕
@@ -59,10 +59,10 @@ function Card({ g, onOpen }: { g: GenState; onOpen: (id: string) => void }) {
       </div>
 
       <div className="mt-1 pl-[1.1rem] text-xs text-white/55">
-        {running && <span className="text-amber-300">生成中 · {phase}</span>}
-        {g.status === "done" && <span className="text-emerald-300">生成完成</span>}
-        {g.status === "cancelled" && <span className="text-white/50">已中断，项目回到草稿</span>}
-        {g.status === "failed" && <span className="text-red-300">{g.error || "生成失败"}</span>}
+        {running && <span className="text-amber-300">Generating - {phase}</span>}
+        {g.status === "done" && <span className="text-emerald-300">Generation complete</span>}
+        {g.status === "cancelled" && <span className="text-white/50">Stopped; project returned to draft</span>}
+        {g.status === "failed" && <span className="text-red-300">{g.error || "Generation failed"}</span>}
       </div>
 
       <div className="mt-2 flex gap-2 pl-[1.1rem]">
@@ -71,7 +71,7 @@ function Card({ g, onOpen }: { g: GenState; onOpen: (id: string) => void }) {
             onClick={() => generations.cancel(g.projectId)}
             className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/20"
           >
-            停止
+            Stop
           </button>
         ) : g.status === "done" ? (
           <button
@@ -81,14 +81,14 @@ function Card({ g, onOpen }: { g: GenState; onOpen: (id: string) => void }) {
             }}
             className="rounded-md bg-blue-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-400"
           >
-            查看
+            View
           </button>
         ) : null}
         <button
           onClick={() => onOpen(g.projectId)}
           className="rounded-md border border-white/12 px-2.5 py-1 text-xs text-white/60 hover:text-white"
         >
-          打开项目
+          Open project
         </button>
       </div>
     </div>

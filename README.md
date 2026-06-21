@@ -16,7 +16,7 @@ and reaching alignment — into one auditable workspace instead of a week of mee
 [![LangGraph](https://img.shields.io/badge/LangGraph-DAG-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**English** · [中文](README.zh.md)
+**English** · [Chinese](README.zh.md)
 
 [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Configuration](#-configuration) · [Design deep-dive](DESIGN.md)
 

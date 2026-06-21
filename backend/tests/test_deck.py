@@ -62,7 +62,7 @@ def test_deck_user_includes_client_and_org_signature_instruction():
     assert "POC title: Payments Modernization" in prompt
     assert "Client company for title slide: Acme Bank" in prompt
     assert "Consulting team for title slide: ArcD Studio" in prompt
-    assert "Title slide signature: 为 Acme Bank 制作 · 由 ArcD Studio 出品" in prompt
+    assert "Title slide signature: Prepared for Acme Bank · Produced by ArcD Studio" in prompt
     assert "Document body" in prompt
 
 
@@ -70,16 +70,16 @@ def test_deck_user_includes_client_only_signature_instruction():
     prompt = _deck_user({"client_name": "Acme Bank"}, "T", "Body")
     assert "Client company for title slide: Acme Bank" in prompt
     assert "Consulting team for title slide" not in prompt
-    assert "Title slide signature: 为 Acme Bank 制作" in prompt
-    assert "由 " not in prompt
+    assert "Title slide signature: Prepared for Acme Bank" in prompt
+    assert "Produced by " not in prompt
 
 
 def test_deck_user_includes_org_only_signature_instruction():
     prompt = _deck_user({"consulting_org": "ArcD Studio"}, "T", "Body")
     assert "Client company for title slide" not in prompt
     assert "Consulting team for title slide: ArcD Studio" in prompt
-    assert "Title slide signature: 由 ArcD Studio 出品" in prompt
-    assert "为 " not in prompt
+    assert "Title slide signature: Produced by ArcD Studio" in prompt
+    assert "Prepared for " not in prompt
 
 
 def test_deck_user_omits_signature_when_names_missing():

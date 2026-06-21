@@ -94,13 +94,13 @@ def _deck_user(project: dict[str, Any], title: str, body: str) -> str:
         lines.append(f"Consulting team for title slide: {org}")
 
     if client and org:
-        lines.append(f"Title slide signature: 为 {client} 制作 · 由 {org} 出品")
+        lines.append(f"Title slide signature: Prepared for {client} · Produced by {org}")
         lines.append("Render this exact signature as a small editable attribution line on the title slide only.")
     elif client:
-        lines.append(f"Title slide signature: 为 {client} 制作")
+        lines.append(f"Title slide signature: Prepared for {client}")
         lines.append("Render this exact signature as a small editable attribution line on the title slide only.")
     elif org:
-        lines.append(f"Title slide signature: 由 {org} 出品")
+        lines.append(f"Title slide signature: Produced by {org}")
         lines.append("Render this exact signature as a small editable attribution line on the title slide only.")
 
     lines.extend(["", body])

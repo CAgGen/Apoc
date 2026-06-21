@@ -53,7 +53,7 @@ export function Dashboard({ me, onOpen }: { me: Stakeholder; onOpen: (id: string
 
   async function handleDelete(e: MouseEvent, id: string, title: string) {
     e.stopPropagation();
-    if (!window.confirm(`删除项目「${title}」？此操作不可撤销。`)) return;
+    if (!window.confirm(`Delete project "${title}"? This cannot be undone.`)) return;
     setDeleting(id);
     try {
       await api.deleteProject(id);
@@ -109,7 +109,7 @@ export function Dashboard({ me, onOpen }: { me: Stakeholder; onOpen: (id: string
               <button
                 onClick={(e) => handleDelete(e, p.id, p.title)}
                 disabled={deleting === p.id}
-                title="删除项目"
+                title="Delete project"
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-white/0 transition hover:text-red-400 group-hover:text-white/30 disabled:opacity-40"
               >
                 {deleting === p.id ? "…" : "✕"}
@@ -446,7 +446,7 @@ function ConfirmPanel({
             <span className="flex items-center gap-2">
               {f.label}
               {!draft.brief[f.key]?.trim() && (
-                <span className="rounded bg-amber-500/15 px-1.5 text-[10px] text-amber-300">待补</span>
+                <span className="rounded bg-amber-500/15 px-1.5 text-[10px] text-amber-300">Missing</span>
               )}
             </span>
             <textarea
@@ -495,7 +495,7 @@ function ConfirmPanel({
       </div>
       {cancelled && (
         <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white/60">
-          生成已中断，项目已回到草稿状态，可重新生成。
+          Generation was stopped. The project is back in draft and can be generated again.
         </div>
       )}
       {error && (

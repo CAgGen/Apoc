@@ -88,7 +88,7 @@ function armStall(t: Tracker) {
   t.stall = setTimeout(() => {
     settle(t.state.projectId, {
       status: "failed",
-      error: "服务器长时间无进度——生成可能仍在后台继续。可刷新页面重连或稍后重试。",
+      error: "No server progress for a while; generation may still be running in the background. Refresh to reconnect or try again later.",
     });
   }, GENERATION_STALL_MS);
 }
@@ -114,7 +114,7 @@ function connect(id: string) {
     const log = [...tr.state.log, `${ev.phase} — ${ev.message ?? ""}`];
     if (ev.phase === "done") settle(id, { phase: "done", status: "done", log });
     else if (ev.phase === "failed")
-      settle(id, { phase: "failed", status: "failed", error: ev.message || "生成失败。", log });
+      settle(id, { phase: "failed", status: "failed", error: ev.message || "Generation failed.", log });
     else if (ev.phase === "cancelled")
       settle(id, { phase: "cancelled", status: "cancelled", log });
     else update(id, { phase: ev.phase, log });
@@ -123,7 +123,7 @@ function connect(id: string) {
   es.onerror = () => {
     const tr = trackers.get(id);
     if (!tr || tr.settled) return; // normal close after a terminal event
-    settle(id, { status: "failed", error: "与生成进度的连接中断，可刷新页面重连。" });
+    settle(id, { status: "failed", error: "Lost the generation progress connection. Refresh to reconnect." });
   };
 }
 
@@ -163,7 +163,7 @@ export const generations = {
       }
       if (status === "generating") {
         trackers.set(id, {
-          state: { projectId: id, title, log: ["重新连接生成进度…"], phase: "reconnecting", status: "running" },
+          state: { projectId: id, title, log: ["Reconnecting to generation progress..."], phase: "reconnecting", status: "running" },
           es: null,
           stall: null,
           settled: false,
